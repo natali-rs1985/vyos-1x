@@ -32,6 +32,7 @@ MIGRATE_LOAD_CONFIG = ['/usr/libexec/vyos/vyos-load-config.py']
 SAVE_CONFIG = ['/usr/libexec/vyos/vyos-save-config.py']
 INSTALL_IMAGE = ['/usr/libexec/vyos/op_mode/image_installer.py',
                  '--action', 'add', '--no-prompt', '--image-path']
+IMPORT_PKI = ['/opt/vyatta/bin/vyatta-op-cmd-wrapper', 'import']
 REMOVE_IMAGE = ['/usr/libexec/vyos/op_mode/image_manager.py',
                 '--action', 'delete', '--no-prompt', '--image-name']
 GENERATE = ['/opt/vyatta/bin/vyatta-op-cmd-wrapper', 'generate']
@@ -210,6 +211,10 @@ class ConfigSession(object):
 
     def install_image(self, url):
         out = self.__run_command(INSTALL_IMAGE + [url])
+        return out
+
+    def import_pki(self, path):
+        out = self.__run_command(IMPORT_PKI + path)
         return out
 
     def remove_image(self, name):
