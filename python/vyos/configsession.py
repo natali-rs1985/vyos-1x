@@ -1,5 +1,5 @@
 # configsession -- the write API for the VyOS running config
-# Copyright (C) 2019-2023 VyOS maintainers and contributors
+# Copyright (C) 2019-2024 VyOS maintainers and contributors
 #
 # This library is free software; you can redistribute it and/or modify it under the terms of
 # the GNU Lesser General Public License as published by the Free Software Foundation;
@@ -33,6 +33,8 @@ SAVE_CONFIG = ['/usr/libexec/vyos/vyos-save-config.py']
 INSTALL_IMAGE = ['/usr/libexec/vyos/op_mode/image_installer.py',
                  '--action', 'add', '--no-prompt', '--image-path']
 IMPORT_PKI = ['/opt/vyatta/bin/vyatta-op-cmd-wrapper', 'import']
+IMPORT_PKI_NO_PROMPT = ['/usr/libexec/vyos/op_mode/pki.py',
+                        '--action', 'import', '--no-prompt']
 REMOVE_IMAGE = ['/usr/libexec/vyos/op_mode/image_manager.py',
                 '--action', 'delete', '--no-prompt', '--image-name']
 GENERATE = ['/opt/vyatta/bin/vyatta-op-cmd-wrapper', 'generate']
@@ -215,6 +217,10 @@ class ConfigSession(object):
 
     def import_pki(self, path):
         out = self.__run_command(IMPORT_PKI + path)
+        return out
+
+    def import_pki_no_prompt(self, path):
+        out = self.__run_command(IMPORT_PKI_NO_PROMPT + path)
         return out
 
     def remove_image(self, name):
