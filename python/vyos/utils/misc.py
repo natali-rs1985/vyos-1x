@@ -52,9 +52,7 @@ def install_into_config(conf, config_paths, override_prompt=True):
                 continue
 
         try:
-            cmd(f'vyos_libexec_dir=/usr/libexec/vyos '
-                f'vyos_validators_dir=/usr/libexec/vyos/validators '
-                f'/opt/vyatta/sbin/my_set {path}')
+            cmd(f'/opt/vyatta/sbin/my_set {path}')
             count += 1
         except:
             failed.append(path)
