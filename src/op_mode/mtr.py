@@ -22,11 +22,21 @@ from vyos.utils.network import interface_list
 from vyos.utils.network import vrf_list
 from vyos.utils.process import call
 
+
+def protocol_list():
+    return ['tcp', 'udp', 'sctp']
+
 options = {
     'report': {
         'mtr': '{command} --report',
         'type': 'noarg',
         'help': 'This option puts mtr into report mode. When in this mode, mtr will run for the number of cycles specified by the -c option, and then print statistics and exit.'
+    },
+    'protocol': {
+        'mtr': '{command} --{value}',
+        'type': '<protocol>',
+        'helpfunction': protocol_list,
+        'help': 'Use UDP, TCP or SCTP  datagrams instead of ICMP ECHO.'
     },
     'report-wide': {
         'mtr': '{command} --report-wide',
@@ -128,21 +138,6 @@ options = {
         'mtr': '{command} --max-unknown {value}',
         'type': '<num>',
         'help': 'Specifies the maximum unknown host. Default is 5.'
-    },
-    'udp': {
-        'mtr': '{command} --udp',
-        'type': 'noarg',
-        'help': 'Use UDP datagrams instead of ICMP ECHO.'
-    },
-    'tcp': {
-        'mtr': '{command} --tcp',
-        'type': 'noarg',
-        'help': ' Use TCP SYN packets instead of ICMP ECHO. PACKETSIZE is ignored, since SYN packets can not contain data.'
-    },
-    'sctp': {
-        'mtr': '{command} --sctp',
-        'type': 'noarg',
-        'help': 'Use Stream Control Transmission Protocol packets instead of ICMP ECHO.'
     },
     'port': {
         'mtr': '{command} --port {value}',
