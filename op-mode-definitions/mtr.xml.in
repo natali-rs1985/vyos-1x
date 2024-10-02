@@ -31,7 +31,7 @@
         <list>&lt;hostname&gt; &lt;x.x.x.x&gt; &lt;h:h:h:h:h:h:h:h&gt;</list>
       </completionHelp>
     </properties>
-    <command>${vyos_op_scripts_dir}/mtr.py ${@:2}</command>
+    <command>${vyos_op_scripts_dir}/mtr_execute.py mtr --host $2</command>
     <children>
       <leafNode name="node.tag">
         <properties>

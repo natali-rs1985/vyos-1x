@@ -307,6 +307,20 @@ class PoweroffModel(ApiModel):
         }
 
 
+class TracerouteModel(ApiModel):
+    op: StrictStr
+    host: StrictStr
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "key": "id_key",
+                "op": "traceroute",
+                "host": "host",
+            }
+        }
+
+
 class Success(BaseModel):
     success: bool
     data: Union[str, bool, Dict]
@@ -418,7 +432,7 @@ class MultipartRequest(Request):
                         self.form_err = (400,
                         f"Malformed command '{c}': missing 'op' field")
                     if endpoint not in ('/config-file', '/container-image',
-                                        '/image', '/configure-section'):
+                                        '/image', '/configure-section', '/traceroute'):
                         if 'path' not in c:
                             self.form_err = (400,
                             f"Malformed command '{c}': missing 'path' field")
@@ -888,6 +902,27 @@ def poweroff_op(data: PoweroffModel):
     try:
         if op == 'poweroff':
             res = session.poweroff(path)
+        else:
+            return error(400, f"'{op}' is not a valid operation")
+    except ConfigSessionError as e:
+        return error(400, str(e))
+    except Exception as e:
+        logger.critical(traceback.format_exc())
+        return error(500, "An internal error occured. Check the logs for details.")
+
+    return success(res)
+
+
+@app.post('/traceroute')
+def traceroute_op(data: TracerouteModel):
+    session = app.state.vyos_session
+
+    op = data.op
+    host = data.host
+
+    try:
+        if op == 'traceroute':
+            res = session.traceroute(host)
         else:
             return error(400, f"'{op}' is not a valid operation")
     except ConfigSessionError as e:
