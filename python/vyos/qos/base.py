@@ -366,60 +366,113 @@ class QoSBase:
 
                         # Build pedit action to rewrite DSCP on matched packets.
                         # retain 0xfc preserves ECN bits (bottom 2 bits of TOS/Traffic Class).
-                        # Non-IP match types skip pedit to avoid corrupting
-                        # non-IP packets, unless ether protocol is ip or ipv6.
+                        # For IP-specific match types a single pedit action is appended.
+                        # For non-IP-specific matches with protocol all, two separate
+                        # protocol-scoped filters (protocol ip and protocol ipv6) are
+                        # generated to avoid running pedit on non-IP packets.
                         dscp_action = ''
+                        dscp_dual_filter = False
                         if dscp_value is not None:
                             if 'ip' in match_config or filter_protocol == 'ip':
                                 dscp_action = f' action pedit ex munge ip dsfield set {dscp_value} retain 0xfc'
                             elif 'ipv6' in match_config or filter_protocol == 'ipv6':
                                 dscp_action = f' action pedit ex munge ip6 traffic_class set {dscp_value} retain 0xfc'
+                            elif filter_protocol == 'all':
+                                # Non-IP-specific match with set-dscp: emit two
+                                # protocol-scoped filters so that DSCP remarking is
+                                # applied to IP traffic only, leaving non-IP packets
+                                # (e.g. ARP) untouched.
+                                dscp_dual_filter = True
 
                         if index != max_index or not has_action_policy:
                             # avoid duplicate last match rule
                             cls = int(cls)
-                            # add pedit before flowid for filters without police
-                            if dscp_action:
-                                filter_cmd += dscp_action
-                            filter_cmd += f' flowid {self._parent:x}:{cls:x}'
-                            self._cmd(filter_cmd)
+                            if dscp_dual_filter:
+                                # Replace protocol all with ip/ipv6 and emit two filters.
+                                for proto, pedit in [
+                                    ('ip', f' action pedit ex munge ip dsfield set {dscp_value} retain 0xfc'),
+                                    ('ipv6', f' action pedit ex munge ip6 traffic_class set {dscp_value} retain 0xfc'),
+                                ]:
+                                    cmd = filter_cmd.replace(' protocol all', f' protocol {proto}', 1)
+                                    cmd += pedit + f' flowid {self._parent:x}:{cls:x}'
+                                    self._cmd(cmd)
+                            else:
+                                # add pedit before flowid for filters without police
+                                if dscp_action:
+                                    filter_cmd += dscp_action
+                                filter_cmd += f' flowid {self._parent:x}:{cls:x}'
+                                self._cmd(filter_cmd)
 
                     vlan_expression = "match.*.vif"
                     match_vlan = jmespath.search(vlan_expression, cls_config)
 
                     if has_action_policy and has_filter:
-                        # For "vif" "basic match" is used instead of "action police" T5961
-                        if not match_vlan:
-                            # chain pedit before police with pipe
-                            if dscp_action:
-                                filter_cmd += dscp_action + ' pipe'
-                            filter_cmd += f' action police'
-
-                            if 'exceed' in cls_config:
-                                action = cls_config['exceed']
-                                filter_cmd += f' conform-exceed {action}'
-                            if 'not_exceed' in cls_config:
-                                action = cls_config['not_exceed']
-                                filter_cmd += f'/{action}'
-
-                            if 'bandwidth' in cls_config:
-                                rate = self._rate_convert(cls_config['bandwidth'])
-                                filter_cmd += f' rate {rate}'
-
-                            if 'burst' in cls_config:
-                                burst = cls_config['burst']
-                                filter_cmd += f' burst {burst}'
-
-                            if 'mtu' in cls_config:
-                                mtu = cls_config['mtu']
-                                filter_cmd += f' mtu {mtu}'
-                        elif dscp_action:
-                            # vlan match skips police (T5961) but still needs pedit
-                            filter_cmd += dscp_action
-
                         cls = int(cls)
-                        filter_cmd += f' flowid {self._parent:x}:{cls:x}'
-                        self._cmd(filter_cmd)
+                        if dscp_dual_filter:
+                            # Build police suffix (if applicable) and emit two
+                            # protocol-scoped filters for DSCP remarking.
+                            if not match_vlan:
+                                police_suffix = ' action police'
+                                if 'exceed' in cls_config:
+                                    action = cls_config['exceed']
+                                    police_suffix += f' conform-exceed {action}'
+                                if 'not_exceed' in cls_config:
+                                    action = cls_config['not_exceed']
+                                    police_suffix += f'/{action}'
+                                if 'bandwidth' in cls_config:
+                                    rate = self._rate_convert(cls_config['bandwidth'])
+                                    police_suffix += f' rate {rate}'
+                                if 'burst' in cls_config:
+                                    burst = cls_config['burst']
+                                    police_suffix += f' burst {burst}'
+                                if 'mtu' in cls_config:
+                                    mtu = cls_config['mtu']
+                                    police_suffix += f' mtu {mtu}'
+                            else:
+                                police_suffix = ''
+                            for proto, pedit in [
+                                ('ip', f' action pedit ex munge ip dsfield set {dscp_value} retain 0xfc'),
+                                ('ipv6', f' action pedit ex munge ip6 traffic_class set {dscp_value} retain 0xfc'),
+                            ]:
+                                cmd = filter_cmd.replace(' protocol all', f' protocol {proto}', 1)
+                                if police_suffix:
+                                    cmd += pedit + ' pipe' + police_suffix
+                                else:
+                                    cmd += pedit
+                                cmd += f' flowid {self._parent:x}:{cls:x}'
+                                self._cmd(cmd)
+                        else:
+                            # For "vif" "basic match" is used instead of "action police" T5961
+                            if not match_vlan:
+                                # chain pedit before police with pipe
+                                if dscp_action:
+                                    filter_cmd += dscp_action + ' pipe'
+                                filter_cmd += f' action police'
+
+                                if 'exceed' in cls_config:
+                                    action = cls_config['exceed']
+                                    filter_cmd += f' conform-exceed {action}'
+                                if 'not_exceed' in cls_config:
+                                    action = cls_config['not_exceed']
+                                    filter_cmd += f'/{action}'
+
+                                if 'bandwidth' in cls_config:
+                                    rate = self._rate_convert(cls_config['bandwidth'])
+                                    filter_cmd += f' rate {rate}'
+
+                                if 'burst' in cls_config:
+                                    burst = cls_config['burst']
+                                    filter_cmd += f' burst {burst}'
+
+                                if 'mtu' in cls_config:
+                                    mtu = cls_config['mtu']
+                                    filter_cmd += f' mtu {mtu}'
+                            elif dscp_action:
+                                # vlan match skips police (T5961) but still needs pedit
+                                filter_cmd += dscp_action
+
+                            filter_cmd += f' flowid {self._parent:x}:{cls:x}'
+                            self._cmd(filter_cmd)
 
                 # The police block allows limiting of the byte or packet rate of
                 # traffic matched by the filter it is attached to.
