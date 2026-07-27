@@ -183,6 +183,21 @@ class TestVPP(VyOSUnitTestSHIM.TestCase):
         self.cli_delete(['interfaces', 'ethernet', interface, 'mtu'])
         self.cli_commit()
 
+        # A custom MAC address must reach the VPP dataplane, and removing it must
+        # restore the hardware address (hw-id). Rejection of drivers that cannot
+        # change the MAC (e.g. vmxnet3) is not covered here, as the CI dataplane
+        # NIC uses a supported driver.
+        hw_mac = VPPControl().get_mac(interface)
+        mac = '02:00:de:ad:be:01'
+        self.cli_set(['interfaces', 'ethernet', interface, 'mac', mac])
+        self.cli_commit()
+        self.assertEqual(VPPControl().get_mac(interface), mac)
+
+        # removing the custom MAC reverts to the hardware address (hw-id)
+        self.cli_delete(['interfaces', 'ethernet', interface, 'mac'])
+        self.cli_commit()
+        self.assertEqual(VPPControl().get_mac(interface), hw_mac)
+
         # set interface address as dhcp
         self.cli_set(['interfaces', 'ethernet', interface, 'address', 'dhcp'])
         self.cli_commit()
