@@ -1324,6 +1324,50 @@ class TestQoS(VyOSUnitTestSHIM.TestCase):
                 self.assertIn(f'filter parent 1: protocol {proto} pref',
                               get_tc_filter_details(interface))
 
+    def test_25_policy_shaper_mixed_ether_protocol(self):
+        # T9134: a tc filter priority is bound to a single protocol, so two
+        # classes matching on different protocols (here the default "all" and
+        # an explicit "arp") must not share a filter priority - otherwise tc
+        # rejects the second filter and the commit crashes.
+        interface = self._interfaces[0]
+        shaper_name = f'qos-shaper-{interface}'
+        shaper_path = base_path + ['policy', 'shaper', shaper_name]
+        cls10 = shaper_path + ['class', '10']
+        cls20 = shaper_path + ['class', '20']
+
+        self.cli_set(base_path + ['interface', interface, 'egress', shaper_name])
+        self.cli_set(shaper_path + ['bandwidth', '100mbit'])
+        self.cli_set(shaper_path + ['default', 'bandwidth', '50mbit'])
+        self.cli_set(cls10 + ['bandwidth', '50mbit'])
+        self.cli_set(
+            cls10 + ['match', 'RULE-1', 'ip', 'source', 'address', '10.10.0.0/24']
+        )
+        self.cli_set(cls20 + ['bandwidth', '10mbit'])
+        self.cli_set(cls20 + ['match', 'RULE-2', 'ether', 'protocol', 'arp'])
+
+        # commit changes
+        self.cli_commit()
+
+        filters = get_tc_filter_details(interface)
+        # the "all" protocol filter (class 10) and the "arp" protocol filter
+        # (class 20) must both be installed with distinct priorities
+        self.assertIn('filter parent 1: protocol all pref 1 u32', filters)
+        self.assertIn('filter parent 1: protocol arp pref 2 u32', filters)
+
+        # An explicit per-class "priority" must not be reused as the tc filter
+        # priority: both classes sharing priority "3" while matching different
+        # protocols must still commit and keep distinct filter priorities. The
+        # class "priority" only drives the HTB class scheduling priority.
+        self.cli_set(cls10 + ['priority', '3'])
+        self.cli_set(cls20 + ['priority', '3'])
+        self.cli_commit()
+
+        filters = get_tc_filter_details(interface)
+        self.assertIn('filter parent 1: protocol all pref 1 u32', filters)
+        self.assertIn('filter parent 1: protocol arp pref 2 u32', filters)
+        # the class priority is applied to the HTB class scheduling prio
+        self.assertIn('prio 3', cmdl(['tc', 'class', 'show', 'dev', interface]))
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2, failfast=VyOSUnitTestSHIM.TestCase.debug_on())

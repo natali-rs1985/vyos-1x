@@ -238,6 +238,14 @@ class QoSBase:
             pprint.pprint(config)
 
         if 'class' in config:
+            # T9134: Every match becomes its own tc filter. A tc filter priority
+            # ("prio"/"pref") is bound to a single "protocol", so two filters
+            # that share a priority but use a different protocol (e.g. the
+            # default "all" and an explicit "arp") conflict and tc rejects the
+            # second one. Assign a unique priority per match in class/match
+            # declaration order (filters are evaluated in that order).
+            filter_prio = 0
+            is_shaper = self.qostype in ['shaper', 'shaper_hfsc']
             for cls, cls_config in config['class'].items():
                 self._build_base_qdisc(cls_config, int(cls))
 
@@ -247,7 +255,13 @@ class QoSBase:
 
                 if priority:
                     filter_cmd_base += ['prio', str(cls)]
-                elif 'priority' in cls_config:
+                elif 'priority' in cls_config and not is_shaper:
+                    # The shaper types must not reuse the class "priority" as the
+                    # tc filter priority: classes sharing a priority but matching
+                    # different protocols would conflict and tc would reject the
+                    # filter (T9134). They get a unique filter priority from
+                    # filter_prio below. (For the HTB shaper the class "priority"
+                    # still sets the HTB scheduling priority in trafficshaper.py.)
                     prio = cls_config['priority']
                     filter_cmd_base += ['prio', str(prio)]
 
@@ -256,6 +270,7 @@ class QoSBase:
                     has_action_policy = any(tmp in ['exceed', 'bandwidth', 'burst'] for tmp in cls_config)
                     max_index = len(cls_config['match'])
                     for index, (match, match_config) in enumerate(cls_config['match'].items(), start=1):
+                        filter_prio += 1
                         filter_cmd = list(filter_cmd_base)
                         if not has_filter:
                             for key in ['mark', 'vif', 'ip', 'ipv6', 'interface', 'ether']:
@@ -266,8 +281,8 @@ class QoSBase:
                         tmp = dict_search(f'ether.protocol', match_config) or 'all'
                         filter_cmd += ['protocol', str(tmp)]
 
-                        if self.qostype in ['shaper', 'shaper_hfsc'] and 'prio' not in filter_cmd:
-                            filter_cmd += ['prio', str(index)]
+                        if is_shaper and 'prio' not in filter_cmd:
+                            filter_cmd += ['prio', str(filter_prio)]
 
                         if 'mark' in match_config:
                             mark = match_config['mark']
